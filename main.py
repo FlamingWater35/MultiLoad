@@ -42,7 +42,8 @@ def fetch_rendered_html(url):
         print("Saved rendered HTML to rendered_page.html")
 
         return rendered_html
-
+    except Exception as e:
+        print(f"Fetching HTML caused an exception: {e}")
     finally:
         driver.quit()
 
@@ -124,7 +125,8 @@ def download_process(epub_urls):
 def main():
     # fetch_rendered_html(target_url)
     links = get_links()
-    download_process(links)
+    if len(links) >= 1:
+        download_process(links)
 
 
 if __name__ == "__main__":
