@@ -45,7 +45,8 @@ def fetch_rendered_html(url):
     except Exception as e:
         print(f"Fetching HTML caused an exception: {e}")
     finally:
-        driver.quit()
+        if driver:
+            driver.quit()
 
 
 def extract_epub_links(html_page, base_url):
@@ -62,12 +63,14 @@ def extract_epub_links(html_page, base_url):
 
 
 def get_links():
-    with open("rendered_page.html", "r", encoding="utf-8") as f:
-        html = f.read()
-    epub_links = extract_epub_links(html, target_url)
-    print(f"Found {len(epub_links)} EPUB links")
-
-    return epub_links
+    if os.path.exists("rendered_page.html"):
+        with open("rendered_page.html", "r", encoding="utf-8") as f:
+            html = f.read()
+        epub_links = extract_epub_links(html, target_url)
+        print(f"Found {len(epub_links)} EPUB links")
+        return epub_links
+    print("HTML page not found")
+    return None
 
 
 replacements = {
@@ -125,7 +128,7 @@ def download_process(epub_urls):
 def main():
     # fetch_rendered_html(target_url)
     links = get_links()
-    if len(links) >= 1:
+    if links != None and len(links) >= 1:
         download_process(links)
 
 
