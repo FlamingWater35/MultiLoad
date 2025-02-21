@@ -24,7 +24,10 @@ session.headers.update(headers)
 
 
 def fetch_rendered_html(url):
-    driver = uc.Chrome(headless=True, use_subprocess=False)
+    try:
+        driver = uc.Chrome(headless=True, use_subprocess=False)
+    except Exception as e:
+        print(f"Initializing ChromeDriver failed: {e}")
 
     try:
         driver.get(url)
@@ -126,7 +129,7 @@ def download_process(epub_urls):
 
 
 def main():
-    # fetch_rendered_html(target_url)
+    fetch_rendered_html(target_url)
     links = get_links()
     if links != None and len(links) >= 1:
         download_process(links)
