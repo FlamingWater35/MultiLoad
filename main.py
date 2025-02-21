@@ -8,6 +8,7 @@ import undetected_chromedriver as uc
 import concurrent.futures
 import requests
 from urllib.parse import urljoin
+import webbrowser
 
 
 target_url = "https://server.elscione.com/Officially Translated Light Novels/A Certain Magical Index/"
@@ -28,6 +29,11 @@ def fetch_rendered_html(url):
         driver = uc.Chrome(headless=True, use_subprocess=False)
     except Exception as e:
         print(f"Initializing ChromeDriver failed: {e}")
+        choice = input("Do you want to download Chrome? (Yes/No)")
+        if choice.lower == "yes":
+            webbrowser.open("https://www.google.com/chrome/")
+        else:
+            return
 
     try:
         driver.get(url)
