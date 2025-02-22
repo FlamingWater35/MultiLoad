@@ -1,4 +1,10 @@
 import flet as ft
+import asyncio
+from utils import fetch_rendered_html
+import logging
+
+
+logging.basicConfig(level=logging.INFO)
 
 
 def main(page: ft.Page):
@@ -9,10 +15,16 @@ def main(page: ft.Page):
         expand=True,
     )
 
+    def fetcher_button_pressed(e):
+        url = target_website_url.value
+        if url and "https:/" in url:
+            pass
+
     website_fetcher_button = ft.Button(
-        text="Download source",
+        text="Download source HTML",
         height=50,
         width=200,
+        on_click=fetcher_button_pressed,
     )
 
     find_links_button = ft.Button(
@@ -88,7 +100,7 @@ def main(page: ft.Page):
                                     horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                                     alignment=ft.MainAxisAlignment.CENTER,
                                 ),
-                                bgcolor=ft.Colors.BLUE_GREY_900,
+                                bgcolor=ft.Colors.BLUE_GREY_800,
                                 alignment=ft.alignment.center,
                                 border_radius=20,
                                 padding=30,
@@ -112,7 +124,7 @@ def main(page: ft.Page):
                                     horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                                     alignment=ft.MainAxisAlignment.CENTER,
                                 ),
-                                bgcolor=ft.Colors.BLUE_GREY_900,
+                                bgcolor=ft.Colors.BLUE_GREY_800,
                                 alignment=ft.alignment.center,
                                 border_radius=20,
                                 padding=30,

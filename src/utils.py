@@ -11,7 +11,7 @@ from urllib.parse import urljoin
 import webbrowser
 
 
-target_url = "https://server.elscione.com/Officially Translated Light Novels/A Certain Magical Index/"
+# "https://server.elscione.com/Officially Translated Light Novels/A Certain Magical Index/"
 headers = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
@@ -71,13 +71,14 @@ def extract_epub_links(html_page, base_url):
     return epub_links
 
 
-def get_links():
+def get_links(url):
     if os.path.exists("rendered_page.html"):
         with open("rendered_page.html", "r", encoding="utf-8") as f:
             html = f.read()
-        epub_links = extract_epub_links(html, target_url)
+        epub_links = extract_epub_links(html, url)
         print(f"Found {len(epub_links)} EPUB links")
         return epub_links
+    
     print("HTML page not found")
     return None
 
@@ -130,16 +131,8 @@ def download_epub(url, save_folder="downloads", max_retries=3):
 
 
 def download_process(epub_urls):
-    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-        executor.map(download_epub, epub_urls)
-
-
-def main():
-    fetch_rendered_html(target_url)
-    links = get_links()
-    if links != None and len(links) >= 1:
-        download_process(links)
-
-
-if __name__ == "__main__":
-    main()
+    if epub_urls != None and len(epub_urls) >= 1:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+            executor.map(download_epub, epub_urls)
+    else:
+        print("No download links found")
