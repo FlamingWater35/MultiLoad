@@ -70,6 +70,7 @@ class App(ct.CTk):
 
         self.session = requests.Session()
         self.session.headers.update(self.headers)
+        self.epub_links_list: list = []
 
         self.replacements = {
             "%20": " ",
@@ -87,13 +88,13 @@ class App(ct.CTk):
         self.main_frame.grid_rowconfigure((0, 1, 2), weight=1)
 
         self.url_entry = ct.CTkEntry(self.main_frame, width=800, placeholder_text="Add url of a website")
-        self.url_entry.grid(column=0, row=0, padx=30, pady=(30, 10), sticky="new")
+        self.url_entry.grid(column=0, row=0, padx=30, pady=(30, 10))
 
-        self.fetch_html_button = ct.CTkButton(self.main_frame, text="Fetch page source", font=ct.CTkFont(family="Segoe UI"), width=130, command=self.fetch_html_button_start)
-        self.fetch_html_button.grid(column=0, row=1, padx=30, pady=10, sticky="n")
+        self.fetch_html_button = ct.CTkButton(self.main_frame, text="Search for links", font=ct.CTkFont(family="Segoe UI"), width=130, command=self.fetch_html_button_start)
+        self.fetch_html_button.grid(column=0, row=1, padx=30, pady=10)
 
         self.event_log = ct.CTkTextbox(self.main_frame, width=500, height=150, font=ct.CTkFont(family="Microsoft JhengHei", size=13), state="disabled")
-        self.event_log.grid(column=0, row=2, padx=30, pady=(10, 30), sticky="n")
+        self.event_log.grid(column=0, row=2, padx=30, pady=(10, 30))
     
 
     def add_to_log(self, text: str):
@@ -119,7 +120,9 @@ class App(ct.CTk):
         self.url_entry.configure(state="normal")
         
         try:
-            future.result()
+            epub_links = future.result()
+            self.epub_links_list = epub_links
+            print(self.epub_links_list)
         except Exception as e:
             self.add_to_log(f"Error: {e}")
 
@@ -144,14 +147,14 @@ class App(ct.CTk):
                 EC.presence_of_element_located((By.TAG_NAME, "body"))
             )
 
-            time.sleep(5)
-
+            time.sleep(3)
             rendered_html = driver.page_source
-            with open("rendered_page.html", "w", encoding="utf-8") as f:
-                f.write(rendered_html)
-            self.after(0, lambda: self.add_to_log("Saved rendered HTML to rendered_page.html"))
+            self.after(0, lambda: self.add_to_log("Page source found, getting links..."))
 
-            return rendered_html
+            epub_links = self.extract_epub_links(rendered_html, url)
+            self.after(0, lambda: self.add_to_log(f"Found {len(epub_links)} EPUB links"))
+
+            return epub_links
         
         except Exception as e:
             self.after(0, lambda: self.add_to_log(f"Fetching HTML caused an exception: {e}"))
@@ -162,7 +165,7 @@ class App(ct.CTk):
 
     def extract_epub_links(self, html_page, base_url):
         soup = BeautifulSoup(html_page, "html.parser")
-        epub_links = []
+        epub_links: list = []
 
         for link in soup.find_all("a", href=True):
             href = link["href"]
@@ -171,18 +174,6 @@ class App(ct.CTk):
                 epub_links.append(full_url)
 
         return epub_links
-
-
-    def get_links(self, url):
-        if os.path.exists("rendered_page.html"):
-            with open("rendered_page.html", "r", encoding="utf-8") as f:
-                html = f.read()
-            epub_links = self.extract_epub_links(html, url)
-            print(f"Found {len(epub_links)} EPUB links")
-            return epub_links
-
-        print("HTML page not found")
-        return None
 
 
     def download_epub(self, url, save_folder="downloads", max_retries=3):
