@@ -3,4 +3,3 @@ undetected_chromedriver
 beautifulsoup4
 requests
 black
-flet
