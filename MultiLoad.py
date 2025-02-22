@@ -57,7 +57,7 @@ class App(ct.CTk):
         ct.set_default_color_theme("blue")  # Themes: "blue" (standard), "green", "dark-blue"
 
         self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(1, weight=1)
+        self.grid_rowconfigure(0, weight=1)
 
         # "https://server.elscione.com/Officially Translated Light Novels/A Certain Magical Index/"
         self.headers = {
@@ -83,18 +83,20 @@ class App(ct.CTk):
 
     def create_main_ui(self):
         self.main_frame = ct.CTkFrame(self, border_width=4, corner_radius=10)
-        self.main_frame.grid(column=0, row=0, padx=30, pady=30)
+        self.main_frame.grid(column=0, row=0, padx=30, pady=(30, 10))
         self.main_frame.grid_columnconfigure(0, weight=1)
-        self.main_frame.grid_rowconfigure((0, 1, 2), weight=1)
+        self.main_frame.grid_rowconfigure((0, 1, 2, 3), weight=1)
 
         self.url_entry = ct.CTkEntry(self.main_frame, width=800, placeholder_text="Add url of a website")
         self.url_entry.grid(column=0, row=0, padx=30, pady=(30, 10))
 
         self.fetch_html_button = ct.CTkButton(self.main_frame, text="Search for links", font=ct.CTkFont(family="Segoe UI"), width=130, command=self.fetch_html_button_start)
-        self.fetch_html_button.grid(column=0, row=1, padx=30, pady=10)
+        self.fetch_html_button.grid(column=0, row=1, padx=30, pady=(10, 30))
 
-        self.event_log = ct.CTkTextbox(self.main_frame, width=500, height=150, font=ct.CTkFont(family="Microsoft JhengHei", size=13), state="disabled")
-        self.event_log.grid(column=0, row=2, padx=30, pady=(10, 30))
+        self.link_list = ct.CTkScrollableFrame(self, width=800, height=200, border_width=4, corner_radius=10)
+        self.link_list.grid(column=0, row=3, padx=30, pady=(10, 30))
+        self.link_list.grid_columnconfigure(0, weight=1)
+        self.link_list.grid_rowconfigure(0, weight=1)
     
 
     def add_to_log(self, text: str):
@@ -105,11 +107,14 @@ class App(ct.CTk):
 
 
     def fetch_html_button_start(self):
-        self.fetch_html_button.configure(state="disabled")
-        self.url_entry.configure(state="disabled")
-        
         url = self.url_entry.get()
         if url != None and "https:/" in url:
+            self.fetch_html_button.configure(state="disabled")
+            self.url_entry.configure(state="disabled")
+
+            self.event_log = ct.CTkTextbox(self.main_frame, width=500, height=100, font=ct.CTkFont(family="Microsoft JhengHei", size=13), state="disabled")
+            self.event_log.grid(column=0, row=2, padx=30, pady=(10, 30))
+
             executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
             future = executor.submit(self.fetch_rendered_html, url)
             future.add_done_callback(self.on_fetch_complete)
@@ -122,9 +127,14 @@ class App(ct.CTk):
         try:
             epub_links = future.result()
             self.epub_links_list = epub_links
-            print(self.epub_links_list)
         except Exception as e:
             self.add_to_log(f"Error: {e}")
+        
+        time.sleep(2)
+        self.event_log.destroy()
+        for index in range(len(epub_links)):
+            link = ct.CTkButton(self.link_list, text=f"{epub_links[index]}")
+            link.grid(column=0, row=index, padx=5, pady=5)
 
 
     def show_install_popup(self, e):
