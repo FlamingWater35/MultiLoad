@@ -6,3 +6,4 @@ black
 dearpygui
 pywinstyles
 pywin32
+nuitka

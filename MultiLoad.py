@@ -126,7 +126,9 @@ def download_epub(url, save_folder, progress_bar_tag, max_retries=3):
                     logging.info(
                         f"503 Service Unavailable for {filename}. Retrying ({attempt + 1}/{max_retries})..."
                     )
-                    add_text_to_download_log(f"503 Service Unavailable for {filename}. Retrying ({attempt + 1}/{max_retries})...")
+                    add_text_to_download_log(
+                        f"503 Service Unavailable for {filename}. Retrying ({attempt + 1}/{max_retries})..."
+                    )
                     time.sleep(2)
                     continue
 
@@ -150,12 +152,16 @@ def download_epub(url, save_folder, progress_bar_tag, max_retries=3):
                 break
             except Exception as e:
                 logging.info(f"Attempt {attempt + 1} failed for {filename}: {e}")
-                add_text_to_download_log(f"Attempt {attempt + 1} failed for {filename}: {e}")
+                add_text_to_download_log(
+                    f"Attempt {attempt + 1} failed for {filename}: {e}"
+                )
                 if attempt == max_retries - 1:
                     logging.error(
                         f"Failed to download {filename} after {max_retries} attempts."
                     )
-                    add_text_to_download_log(f"Failed to download {filename} after {max_retries} attempts.")
+                    add_text_to_download_log(
+                        f"Failed to download {filename} after {max_retries} attempts."
+                    )
         else:
             logging.info(f"File already exists: {filename}")
             add_text_to_download_log(f"File already exists: {filename}")
