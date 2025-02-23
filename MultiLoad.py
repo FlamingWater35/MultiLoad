@@ -164,12 +164,9 @@ def download_process(epub_urls):
             futures = []
             for url in epub_urls:
                 pb_tag = f"pb_{url.split('/')[-1]}_{time.time()}"
-                futures.append(executor.submit(
-                    download_wrapper, 
-                    url, 
-                    "downloads", 
-                    pb_tag
-                ))
+                futures.append(
+                    executor.submit(download_wrapper, url, "downloads", pb_tag)
+                )
             concurrent.futures.wait(futures)
     else:
         print("No download links found")
@@ -209,6 +206,7 @@ def create_progress_bar(pb_tag):
     item2_id = dpg.add_spacer(height=5, parent="progress_bars_container")
 
     return (item_id, item2_id)
+
 
 def delete_progress_bar(pb_tag, spacer_ids):
     if dpg.does_item_exist(pb_tag):
@@ -382,7 +380,9 @@ def setup_ui():
 
                         dpg.add_spacer(height=5)
                         with dpg.child_window(
-                            tag="progress_bars_container", auto_resize_y=True, show=False
+                            tag="progress_bars_container",
+                            auto_resize_y=True,
+                            show=False,
                         ):
                             pass
 
