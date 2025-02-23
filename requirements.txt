@@ -3,4 +3,6 @@ undetected_chromedriver
 beautifulsoup4
 requests
 black
-customtkinter
+dearpygui
+pywinstyles
+pywin32

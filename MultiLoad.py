@@ -6,14 +6,15 @@ from bs4 import BeautifulSoup
 import concurrent.futures
 import requests
 from urllib.parse import urljoin
-import customtkinter as ct
-from CTkMessagebox import CTkMessagebox
-from ctk_listbox import CTkListbox
+import dearpygui.dearpygui as dpg
 import time
 import os
 import sys
 import webbrowser
 import logging
+import ctypes
+import pywinstyles
+from win32 import win32gui
 
 
 logging.basicConfig(
@@ -38,206 +39,328 @@ def resource_path(relative_path):
     return full_path
 
 
-class App(ct.CTk):
-    def __init__(self):
-        super().__init__()
+# "https://server.elscione.com/Officially Translated Light Novels/A Certain Magical Index/"
 
-        self.title("MultiLoad")
-        window_width = 1000
-        window_height = 600
+headers = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Referer": "https://www.google.com/",
+    "Connection": "keep-alive",
+}
 
-        screen_width = self.winfo_screenwidth()
-        screen_height = self.winfo_screenheight()
-        x = (screen_width - window_width) // 2
-        y = (screen_height - window_height) // 2
-        self.geometry(f"{window_width}x{window_height}+{x}+{y}")
+session = requests.Session()
+session.headers.update(headers)
+epub_links_list: list = []
+progress_bars: list = []
 
-        self.iconbitmap(resource_path("docs/icon.ico"))
-
-        ct.set_appearance_mode("System")  # Modes: "System" (standard), "Dark", "Light"
-        ct.set_default_color_theme("blue")  # Themes: "blue" (standard), "green", "dark-blue"
-
-        self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(0, weight=1)
-
-        # "https://server.elscione.com/Officially Translated Light Novels/A Certain Magical Index/"
-        self.headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.9",
-            "Referer": "https://www.google.com/",
-            "Connection": "keep-alive",
-        }
-
-        self.session = requests.Session()
-        self.session.headers.update(self.headers)
-        self.epub_links_list: list = []
-
-        self.replacements = {
-            "%20": " ",
-            "%5B": "[",
-            "%5D": "]",
-        }
-
-        self.create_main_ui()
+replacements = {
+    "%20": " ",
+    "%5B": "[",
+    "%5D": "]",
+}
 
 
-    def create_main_ui(self):
-        self.main_frame = ct.CTkFrame(self, border_width=4, corner_radius=10)
-        self.main_frame.grid(column=0, row=0, padx=30, pady=(30, 10))
-        self.main_frame.grid_columnconfigure(0, weight=1)
-        self.main_frame.grid_rowconfigure((0, 1, 2, 3, 4), weight=1)
+def fetch_rendered_html(url):
+    try:
+        driver = uc.Chrome(headless=True, use_subprocess=False)
+    except Exception as e:
+        logging.error(f"Driver initializing error: {e}")
+        add_text_to_log(f"Driver initializing error: {e}")
 
-        self.url_entry = ct.CTkEntry(self.main_frame, width=800, placeholder_text="Add url of a website")
-        self.url_entry.grid(column=0, row=0, padx=30, pady=(30, 10))
+    try:
+        driver.get(url)
 
-        self.fetch_html_button = ct.CTkButton(self.main_frame, text="Search for links", font=ct.CTkFont(family="Segoe UI"), width=130, command=self.fetch_html_button_start)
-        self.fetch_html_button.grid(column=0, row=1, padx=30, pady=(10, 30))
+        logging.info("Waiting for page to load...")
+        add_text_to_log("Waiting for page to load...")
+        WebDriverWait(driver, 30).until(
+            EC.presence_of_element_located((By.TAG_NAME, "body"))
+        )
 
-        self.link_list = CTkListbox(self, width=800, height=200, border_width=4, corner_radius=10, multiple_selection=True)
-        self.link_list.grid(column=0, row=4, padx=30, pady=(10, 30))
-        self.link_list.grid_columnconfigure(0, weight=1)
-        self.link_list.grid_rowconfigure(0, weight=1)
-    
+        time.sleep(3)
+        rendered_html = driver.page_source
+        logging.info("Page source found, getting links...")
+        add_text_to_log("Page source found, getting links...")
 
-    def download_all_results(self):
-        self.download_process(self.epub_links_list)
-    
-
-    def add_to_log(self, text: str):
-        self.event_log.configure(state="normal")
-        self.event_log.insert("end", text + "\n")
-        self.event_log.see("end")
-        self.event_log.configure(state="disabled")
-
-
-    def fetch_html_button_start(self):
-        url = self.url_entry.get()
-        if url != None and "https:/" in url:
-            self.fetch_html_button.configure(state="disabled")
-            self.url_entry.configure(state="disabled")
-
-            self.event_log = ct.CTkTextbox(self.main_frame, width=500, height=100, font=ct.CTkFont(family="Microsoft JhengHei", size=13), state="disabled")
-            self.event_log.grid(column=0, row=2, padx=30, pady=(10, 30))
-
-            executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-            future = executor.submit(self.fetch_rendered_html, url)
-            future.add_done_callback(self.on_fetch_complete)
-
-
-    def on_fetch_complete(self, future):
-        self.fetch_html_button.configure(state="normal")
-        self.url_entry.configure(state="normal")
-        
-        try:
-            epub_links = future.result()
-            self.epub_links_list = epub_links
-        except Exception as e:
-            self.add_to_log(f"Error: {e}")
-        
-        time.sleep(2)
-        self.event_log.destroy()
-        for index in range(len(epub_links)):
-            self.link_list.insert(index, f"{epub_links[index]}")
-        self.download_all_button = ct.CTkButton(self.main_frame, text="Download all", font=ct.CTkFont(family="Segoe UI"), width=130, command=self.download_all_results)
-        self.download_all_button.grid(column=0, row=3, padx=30, pady=(10, 30))
-
-
-    def show_install_popup(self, e):
-        msg = CTkMessagebox(title=f"Initializing ChromeDriver failed: {e}", message="Do you want to download Chrome? (Yes/No)", icon="question", option_2="No", option_1="Yes", border_width=4, border_color="#43A047", fade_in_duration=50, justify="center")
-        if msg.get() == "Yes":
-            webbrowser.open("https://www.google.com/chrome/")
-
-
-    def fetch_rendered_html(self, url):
-        try:
-            driver = uc.Chrome(headless=True, use_subprocess=False)
-        except Exception as e:
-            self.after(0, lambda: self.show_install_popup(e))
-
-        try:
-            driver.get(url)
-
-            self.after(0, lambda: self.add_to_log("Waiting for page to load..."))
-            WebDriverWait(driver, 30).until(
-                EC.presence_of_element_located((By.TAG_NAME, "body"))
-            )
-
-            time.sleep(3)
-            rendered_html = driver.page_source
-            self.after(0, lambda: self.add_to_log("Page source found, getting links..."))
-
-            epub_links = self.extract_epub_links(rendered_html, url)
-            self.after(0, lambda: self.add_to_log(f"Found {len(epub_links)} EPUB links"))
-
-            return epub_links
-        
-        except Exception as e:
-            self.after(0, lambda: self.add_to_log(f"Fetching HTML caused an exception: {e}"))
-        finally:
-            if driver:
-                driver.quit()
-
-
-    def extract_epub_links(self, html_page, base_url):
-        soup = BeautifulSoup(html_page, "html.parser")
-        epub_links: list = []
-
-        for link in soup.find_all("a", href=True):
-            href = link["href"]
-            if href.lower().endswith(".epub"):
-                full_url = urljoin(base_url, href)
-                epub_links.append(full_url)
+        epub_links = extract_epub_links(rendered_html, url)
+        logging.info(f"Found {len(epub_links)} EPUB links")
+        add_text_to_log(f"Found {len(epub_links)} EPUB links")
 
         return epub_links
+    
+    except Exception as e:
+        logging.info(f"Fetching HTML caused an exception: {e}")
+    finally:
+        if driver:
+            driver.quit()
 
 
-    def download_epub(self, url, save_folder="downloads", max_retries=3):
-        os.makedirs(save_folder, exist_ok=True)
-        filename = url.split("/")[-1]
-        for old, new in self.replacements.items():
-            filename = filename.replace(old, new)
-        save_path = os.path.join(save_folder, filename)
+def extract_epub_links(html_page, base_url):
+    soup = BeautifulSoup(html_page, "html.parser")
+    epub_links: list = []
 
-        for attempt in range(max_retries):
-            if not os.path.exists(save_path):
-                try:
-                    time.sleep(1)
-                    response = self.session.get(url, stream=True)
+    for link in soup.find_all("a", href=True):
+        href = link["href"]
+        if href.lower().endswith(".epub"):
+            full_url = urljoin(base_url, href)
+            epub_links.append(full_url)
 
-                    if response.status_code == 503:
-                        print(
-                            f"503 Service Unavailable for {filename}. Retrying ({attempt + 1}/{max_retries})..."
-                        )
-                        time.sleep(2)
-                        continue
-
-                    response.raise_for_status()
-
-                    with open(save_path, "wb") as file:
-                        for chunk in response.iter_content(chunk_size=1024):
-                            file.write(chunk)
-
-                    print(f"Downloaded: {filename}")
-                    break
-                except Exception as e:
-                    print(f"Attempt {attempt + 1} failed for {filename}: {e}")
-                    if attempt == max_retries - 1:
-                        print(
-                            f"Failed to download {filename} after {max_retries} attempts."
-                        )
-            else:
-                print(f"File already exists: {filename}")
+    return epub_links
 
 
-    def download_process(self, epub_urls):
-        if epub_urls != None and len(epub_urls) >= 1:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-                executor.map(self.download_epub, epub_urls)
+def download_epub(url, save_folder="downloads", max_retries=3):
+    global session, replacements
+
+    os.makedirs(save_folder, exist_ok=True)
+    filename = url.split("/")[-1]
+    for old, new in replacements.items():
+        filename = filename.replace(old, new)
+    save_path = os.path.join(save_folder, filename)
+
+    for attempt in range(max_retries):
+        if not os.path.exists(save_path):
+            try:
+                time.sleep(1)
+                response = session.get(url, stream=True)
+
+                if response.status_code == 503:
+                    print(
+                        f"503 Service Unavailable for {filename}. Retrying ({attempt + 1}/{max_retries})..."
+                    )
+                    time.sleep(2)
+                    continue
+
+                response.raise_for_status()
+
+                with open(save_path, "wb") as file:
+                    for chunk in response.iter_content(chunk_size=1024):
+                        file.write(chunk)
+
+                print(f"Downloaded: {filename}")
+                break
+            except Exception as e:
+                print(f"Attempt {attempt + 1} failed for {filename}: {e}")
+                if attempt == max_retries - 1:
+                    print(
+                        f"Failed to download {filename} after {max_retries} attempts."
+                    )
         else:
-            print("No download links found")
+            print(f"File already exists: {filename}")
+
+
+def download_process(epub_urls):
+    if epub_urls != None and len(epub_urls) >= 1:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+            executor.map(download_epub, epub_urls)
+    else:
+        print("No download links found")
+
+
+"""def show_install_popup(self, e):
+    (title=f"Initializing ChromeDriver failed: {e}", message="Do you want to download Chrome? (Yes/No)", icon="question", option_2="No", option_1="Yes", border_width=4, border_color="#43A047", fade_in_duration=50, justify="center")
+    if msg.get() == "Yes":
+        webbrowser.open("https://www.google.com/chrome/")"""
+
+def add_text_to_log(text: str):
+    dpg.add_text(text, parent="get_links_log", wrap=0)
+
+
+def start_downloads(sender, app_data):
+    global epub_links_list
+
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    future = executor.submit(download_process, epub_links_list)
+    future.add_done_callback(on_downloads_complete)
+
+
+def on_downloads_complete(future):
+    print("\n\nComplete")
+    for item in progress_bars():
+        dpg.hide_item(item)
+
+
+def get_links_button_press(sender, app_data):
+    url = dpg.get_value("url_input")
+    if url != None and "https:/" in url:
+        dpg.disable_item("get_links_button")
+        dpg.disable_item("url_input")
+        dpg.show_item("get_links_log")
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        future = executor.submit(fetch_rendered_html, url)
+        future.add_done_callback(on_fetch_complete)
+
+
+def on_fetch_complete(future):
+    global epub_links_list
+
+    dpg.enable_item("get_links_button")
+    dpg.enable_item("url_input")
+    dpg.show_item("links_list")
+
+    try:
+        epub_links = future.result()
+        epub_links_list = epub_links
+    except Exception as e:
+        logging.error(f"Error: {e}")
+        add_text_to_log(f"Error: {e}")
+
+    dpg.set_value("links_found_label", f"Links found: {len(epub_links_list)}")
+    for index in range(len(epub_links_list)):
+        link_name = epub_links_list[index].split("/")[-1]
+        for old, new in replacements.items():
+            link_name = link_name.replace(old, new)
+        dpg.add_selectable(label=f"{link_name}", parent="links_list")
+        dpg.add_spacer(height=5, parent="links_list")
+    dpg.show_item("download_buttons_group")
+
+
+def setup_ui():
+    global epub_links_list, progress_bars
+
+    with dpg.font_registry(tag="font_registry"):
+        font_size = 26
+        custom_font = dpg.add_font(resource_path("docs/font.otf"), font_size)
+
+    logging.debug("Image initialized")
+
+    with dpg.theme() as child_window_theme:
+        with dpg.theme_component(dpg.mvChildWindow):
+            dpg.add_theme_style(dpg.mvStyleVar_WindowPadding, 15, 10)
+            dpg.add_theme_style(dpg.mvStyleVar_ChildRounding, 3, 3)
+            dpg.add_theme_style(dpg.mvStyleVar_ChildBorderSize, 4, 4)
+            dpg.add_theme_color(dpg.mvThemeCol_Border, (93, 64, 55))
+        with dpg.theme_component(dpg.mvButton):
+            dpg.add_theme_style(dpg.mvStyleVar_FramePadding, 8, 5)
+            dpg.add_theme_style(dpg.mvStyleVar_FrameBorderSize, 2, 2)
+        with dpg.theme_component(dpg.mvButton, enabled_state=False):
+            dpg.add_theme_style(dpg.mvStyleVar_FramePadding, 8, 5)
+            dpg.add_theme_style(dpg.mvStyleVar_FrameBorderSize, 2, 2)
+            dpg.add_theme_color(dpg.mvThemeCol_Border, (93, 64, 55))
+            dpg.add_theme_color(dpg.mvThemeCol_Text, (200, 200, 200, 100))
+        with dpg.theme_component(dpg.mvProgressBar):
+            dpg.add_theme_style(dpg.mvStyleVar_FrameRounding, 4, 4)
+            dpg.add_theme_style(dpg.mvStyleVar_FrameBorderSize, 2, 2)
+            dpg.add_theme_color(dpg.mvThemeCol_Border, (183, 28, 28))
+            dpg.add_theme_color(dpg.mvThemeCol_FrameBg, (40, 53, 147))
+            dpg.add_theme_color(dpg.mvThemeCol_PlotHistogram, (27, 94, 32))
+        with dpg.theme_component(dpg.mvInputText):
+            dpg.add_theme_style(dpg.mvStyleVar_FramePadding, 20, 6)
+        with dpg.theme_component(dpg.mvInputText, enabled_state=False):
+            dpg.add_theme_style(dpg.mvStyleVar_FramePadding, 20, 6)
+            dpg.add_theme_color(dpg.mvThemeCol_Border, (93, 64, 55))
+            dpg.add_theme_color(dpg.mvThemeCol_Text, (200, 200, 200, 100))
+        with dpg.theme_component(dpg.mvSelectable):
+            dpg.add_theme_color(dpg.mvThemeCol_Header, (200, 100, 0, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_HeaderActive, (220, 100, 0, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_HeaderHovered, (180, 120, 50, 200))
+        with dpg.theme_component(dpg.mvCollapsingHeader):
+            dpg.add_theme_style(dpg.mvStyleVar_FramePadding, 5, 5)
+            dpg.add_theme_color(dpg.mvThemeCol_Border, (0, 96, 100))
+        with dpg.theme_component(dpg.mvAll):
+            dpg.add_theme_style(dpg.mvStyleVar_FrameRounding, 4)
+            dpg.add_theme_style(dpg.mvStyleVar_FrameBorderSize, 2, 2)
+    
+    with dpg.theme() as main_window_theme:
+        with dpg.theme_component(dpg.mvChildWindow):
+            dpg.add_theme_color(dpg.mvThemeCol_Border, (21, 101, 192))
+
+    dpg.bind_font(custom_font)
+    logging.debug("Font bound to main window")
+
+    try:
+        with dpg.window(tag="main_window"):
+            with dpg.tab_bar(reorderable=True):
+                with dpg.tab(label="Fetch links"):
+                    with dpg.child_window(
+                        autosize_x=True,
+                        auto_resize_y=True,
+                        tag="multiload_main_window_1",
+                    ):
+                        dpg.add_text("Add url of a website:", wrap=0)
+                        dpg.add_spacer(height=5)
+                        dpg.add_input_text(
+                            tag="url_input",
+                            width=-5,
+                            hint="Paste your url here",
+                        )
+                        dpg.add_spacer(height=10)
+                        dpg.add_button(label="Get links", callback=get_links_button_press, tag="get_links_button")
+                        dpg.add_spacer(height=10)
+
+                        with dpg.child_window(tag="get_links_log", auto_resize_y=True, show=False):
+                            pass
+                        dpg.add_spacer(height=10)
+                
+                with dpg.tab(label="Download files"):
+                    with dpg.child_window(
+                        autosize_x=True,
+                        auto_resize_y=True,
+                        tag="multiload_main_window_2",
+                    ):  
+                        dpg.add_text("Links found: 0", wrap=0, tag="links_found_label")
+                        dpg.add_spacer(height=10)
+
+                        with dpg.group(horizontal=True, show=False, tag="download_buttons_group"):
+                            dpg.add_button(label="Download all", callback=start_downloads)
+                            dpg.add_spacer(width=10)
+                            dpg.add_button(label="Download selected")
+                        
+                        dpg.add_spacer(height=5)
+                        for index in range(1, 5):
+                            dpg.add_spacer(height=5)
+                            item_id = dpg.add_progress_bar(
+                                tag=f"progress_bar_{index}",
+                                default_value=0.0,
+                                width=-5,
+                                height=40,
+                                show=False,
+                                overlay="0.0 MB / 0.0 MB (0%)",
+                            )
+                            progress_bars.append(item_id)
+
+                        dpg.add_spacer(height=5)
+                        with dpg.child_window(tag="links_list", auto_resize_y=True, show=False):
+                            pass
+                        dpg.add_spacer(height=10)
+
+        dpg.bind_item_theme("main_window", child_window_theme)
+        dpg.bind_item_theme("multiload_main_window_1", main_window_theme)
+        dpg.bind_item_theme("multiload_main_window_2", main_window_theme)
+        dpg.bind_item_theme("get_links_log", main_window_theme)
+        dpg.bind_item_theme("links_list", main_window_theme)
+        dpg.set_primary_window("main_window", True)
+
+    except Exception as e:
+        logging.critical(f"Setting up primary window and/or themes failed: {e}")
+
+def main():
+    dpg.create_context()
+
+    user32 = ctypes.windll.user32
+    screen_width, screen_height = user32.GetSystemMetrics(0), user32.GetSystemMetrics(1)
+
+    dpg.create_viewport(title="MultiLoad", width=int(screen_width / 1.5), height=int(screen_height / 1.5), vsync=True)
+    dpg.set_viewport_small_icon(resource_path("docs/icon.ico"))
+    dpg.set_viewport_pos(
+        [
+            (screen_width / 2) - (dpg.get_viewport_width() / 2),
+            (screen_height / 2) - (dpg.get_viewport_height() / 2),
+        ]
+    )
+
+    setup_ui()
+    dpg.setup_dearpygui()
+    dpg.show_viewport()
+
+    hwnd = win32gui.FindWindow(None, "MultiLoad")
+    if hwnd == 0:
+        logging.error("Window not found for pywinstyles")
+    else:
+        pywinstyles.apply_style(hwnd, "mica")
+    
+    dpg.start_dearpygui()
+    dpg.destroy_context()
 
 
 if __name__ == "__main__":
-    app = App()
-    app.mainloop()
+    main()
