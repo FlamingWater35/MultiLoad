@@ -123,9 +123,10 @@ def download_epub(url, save_folder, progress_bar_tag, max_retries=3):
                 response = session.get(url, stream=True)
 
                 if response.status_code == 503:
-                    print(
+                    logging.info(
                         f"503 Service Unavailable for {filename}. Retrying ({attempt + 1}/{max_retries})..."
                     )
+                    add_text_to_download_log(f"503 Service Unavailable for {filename}. Retrying ({attempt + 1}/{max_retries})...")
                     time.sleep(2)
                     continue
 
@@ -136,7 +137,7 @@ def download_epub(url, save_folder, progress_bar_tag, max_retries=3):
                 update_progress_bar(progress_bar_tag, 0, total_size, 0.0)
 
                 with open(save_path, "wb") as file:
-                    for chunk in response.iter_content(chunk_size=1024):
+                    for chunk in response.iter_content(chunk_size=8192):
                         file.write(chunk)
                         downloaded += len(chunk)
                         progress = downloaded / total_size if total_size > 0 else 0
@@ -144,16 +145,20 @@ def download_epub(url, save_folder, progress_bar_tag, max_retries=3):
                             progress_bar_tag, downloaded, total_size, progress
                         )
 
-                print(f"Downloaded: {filename}")
+                logging.info(f"Downloaded: {filename}")
+                add_text_to_download_log(f"Downloaded: {filename}")
                 break
             except Exception as e:
-                print(f"Attempt {attempt + 1} failed for {filename}: {e}")
+                logging.info(f"Attempt {attempt + 1} failed for {filename}: {e}")
+                add_text_to_download_log(f"Attempt {attempt + 1} failed for {filename}: {e}")
                 if attempt == max_retries - 1:
-                    print(
+                    logging.error(
                         f"Failed to download {filename} after {max_retries} attempts."
                     )
+                    add_text_to_download_log(f"Failed to download {filename} after {max_retries} attempts.")
         else:
-            print(f"File already exists: {filename}")
+            logging.info(f"File already exists: {filename}")
+            add_text_to_download_log(f"File already exists: {filename}")
             file_size = os.path.getsize(save_path)
             update_progress_bar(progress_bar_tag, file_size, file_size, 1.0)
 
@@ -169,7 +174,8 @@ def download_process(epub_urls):
                 )
             concurrent.futures.wait(futures)
     else:
-        print("No download links found")
+        logging.info("No download links found")
+        add_text_to_download_log("No download links found")
 
 
 """def show_install_popup(self, e):
@@ -182,12 +188,17 @@ def add_text_to_log(text: str):
     dpg.add_text(text, parent="get_links_log", wrap=0)
 
 
+def add_text_to_download_log(text: str):
+    dpg.add_text(text, parent="download_log", wrap=0)
+
+
 def download_wrapper(url, save_folder, pb_tag):
     try:
         spacer_ids = create_progress_bar(pb_tag)
         download_epub(url, save_folder, pb_tag)
     except Exception as e:
-        print(f"Download failed: {e}")
+        logging.error(f"Download failed: {e}")
+        add_text_to_download_log(f"Download failed: {e}")
     finally:
         delete_progress_bar(pb_tag, spacer_ids)
 
@@ -220,7 +231,7 @@ def update_progress_bar(progress_bar_tag, downloaded, total_size, progress):
     downloaded_mb = downloaded / (1024 * 1024)
     if total_size > 0:
         total_mb = total_size / (1024 * 1024)
-        overlay = f"{downloaded_mb:.1f} MB / {total_mb:.1f} MB ({progress * 100:.1f}%)"
+        overlay = f"{downloaded_mb:.1f} MB / {total_mb:.1f} MB ({progress * 100:.0f}%)"
     else:
         overlay = f"{downloaded_mb:.1f} MB / ??? MB (Unknown)"
     dpg.set_value(progress_bar_tag, progress)
@@ -232,14 +243,19 @@ def start_downloads(sender, app_data):
 
     dpg.disable_item("download_buttons_group")
     dpg.show_item("progress_bars_container")
+    dpg.show_item("download_log")
+    dpg.hide_item("links_list")
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
     future = executor.submit(download_process, epub_links_list)
     future.add_done_callback(on_downloads_complete)
 
 
 def on_downloads_complete(future):
+    dpg.hide_item("progress_bars_container")
+    dpg.hide_item("download_log")
+    dpg.show_item("links_list")
     dpg.enable_item("download_buttons_group")
-    print("\n\nDownloads complete!")
+    print("\nDownloads complete!")
 
 
 def get_links_button_press(sender, app_data):
@@ -389,6 +405,12 @@ def setup_ui():
                         dpg.add_spacer(height=5)
                         with dpg.child_window(
                             tag="links_list", auto_resize_y=True, show=False
+                        ):
+                            pass
+                        dpg.add_spacer(height=5)
+
+                        with dpg.child_window(
+                            tag="download_log", auto_resize_y=True, show=False
                         ):
                             pass
                         dpg.add_spacer(height=10)
