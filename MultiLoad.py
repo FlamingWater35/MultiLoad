@@ -8,6 +8,7 @@ import requests
 from urllib.parse import urljoin
 import customtkinter as ct
 from CTkMessagebox import CTkMessagebox
+from ctk_listbox import CTkListbox
 import time
 import os
 import sys
@@ -85,7 +86,7 @@ class App(ct.CTk):
         self.main_frame = ct.CTkFrame(self, border_width=4, corner_radius=10)
         self.main_frame.grid(column=0, row=0, padx=30, pady=(30, 10))
         self.main_frame.grid_columnconfigure(0, weight=1)
-        self.main_frame.grid_rowconfigure((0, 1, 2, 3), weight=1)
+        self.main_frame.grid_rowconfigure((0, 1, 2, 3, 4), weight=1)
 
         self.url_entry = ct.CTkEntry(self.main_frame, width=800, placeholder_text="Add url of a website")
         self.url_entry.grid(column=0, row=0, padx=30, pady=(30, 10))
@@ -93,10 +94,14 @@ class App(ct.CTk):
         self.fetch_html_button = ct.CTkButton(self.main_frame, text="Search for links", font=ct.CTkFont(family="Segoe UI"), width=130, command=self.fetch_html_button_start)
         self.fetch_html_button.grid(column=0, row=1, padx=30, pady=(10, 30))
 
-        self.link_list = ct.CTkScrollableFrame(self, width=800, height=200, border_width=4, corner_radius=10)
-        self.link_list.grid(column=0, row=3, padx=30, pady=(10, 30))
+        self.link_list = CTkListbox(self, width=800, height=200, border_width=4, corner_radius=10, multiple_selection=True)
+        self.link_list.grid(column=0, row=4, padx=30, pady=(10, 30))
         self.link_list.grid_columnconfigure(0, weight=1)
         self.link_list.grid_rowconfigure(0, weight=1)
+    
+
+    def download_all_results(self):
+        self.download_process(self.epub_links_list)
     
 
     def add_to_log(self, text: str):
@@ -133,8 +138,9 @@ class App(ct.CTk):
         time.sleep(2)
         self.event_log.destroy()
         for index in range(len(epub_links)):
-            link = ct.CTkButton(self.link_list, text=f"{epub_links[index]}")
-            link.grid(column=0, row=index, padx=5, pady=5)
+            self.link_list.insert(index, f"{epub_links[index]}")
+        self.download_all_button = ct.CTkButton(self.main_frame, text="Download all", font=ct.CTkFont(family="Segoe UI"), width=130, command=self.download_all_results)
+        self.download_all_button.grid(column=0, row=3, padx=30, pady=(10, 30))
 
 
     def show_install_popup(self, e):
