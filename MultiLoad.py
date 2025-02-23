@@ -10,12 +10,10 @@ import dearpygui.dearpygui as dpg
 import time
 import os
 import sys
-import webbrowser
 import logging
 import ctypes
 import pywinstyles
 from win32 import win32gui
-import queue
 
 
 logging.basicConfig(
@@ -162,17 +160,17 @@ def download_epub(url, save_folder, progress_bar_tag, max_retries=3):
 
 def download_process(epub_urls):
     if epub_urls and len(epub_urls) >= 1:
-        pb_queue = queue.Queue()
-        for pb in progress_bars:
-            pb_queue.put(pb)
-
         with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-            futures = [
-                executor.submit(download_wrapper, url, "downloads", pb_queue)
-                for url in epub_urls
-            ]
+            futures = []
+            for url in epub_urls:
+                pb_tag = f"pb_{url.split('/')[-1]}_{time.time()}"
+                futures.append(executor.submit(
+                    download_wrapper, 
+                    url, 
+                    "downloads", 
+                    pb_tag
+                ))
             concurrent.futures.wait(futures)
-        print("\n\nComplete")
     else:
         print("No download links found")
 
@@ -187,26 +185,37 @@ def add_text_to_log(text: str):
     dpg.add_text(text, parent="get_links_log", wrap=0)
 
 
-def download_wrapper(url, save_folder, progress_bar_queue):
-    progress_bar_tag = progress_bar_queue.get()
+def download_wrapper(url, save_folder, pb_tag):
     try:
-        init_progress_bar(progress_bar_tag)
-        download_epub(url, save_folder, progress_bar_tag)
+        spacer_ids = create_progress_bar(pb_tag)
+        download_epub(url, save_folder, pb_tag)
     except Exception as e:
         print(f"Download failed: {e}")
     finally:
-        progress_bar_queue.put(progress_bar_tag)
-        reset_progress_bar(progress_bar_tag)
+        delete_progress_bar(pb_tag, spacer_ids)
 
 
-def init_progress_bar(progress_bar_tag):
-    dpg.show_item(progress_bar_tag)
-    dpg.set_value(progress_bar_tag, 0.0)
-    dpg.configure_item(progress_bar_tag, overlay="0.0 MB / 0.0 MB (0.0%)")
+def create_progress_bar(pb_tag):
+    item_id = dpg.add_spacer(height=5, parent="progress_bars_container")
+    dpg.add_progress_bar(
+        tag=pb_tag,
+        default_value=0.0,
+        width=-5,
+        height=40,
+        show=True,
+        parent="progress_bars_container",
+        overlay="0.0 MB / 0.0 MB (0%)",
+    )
+    item2_id = dpg.add_spacer(height=5, parent="progress_bars_container")
 
+    return (item_id, item2_id)
 
-def reset_progress_bar(progress_bar_tag):
-    dpg.hide_item(progress_bar_tag)
+def delete_progress_bar(pb_tag, spacer_ids):
+    if dpg.does_item_exist(pb_tag):
+        dpg.delete_item(pb_tag)
+    for spacer_id in spacer_ids:
+        if dpg.does_item_exist(spacer_id):
+            dpg.delete_item(spacer_id)
 
 
 def update_progress_bar(progress_bar_tag, downloaded, total_size, progress):
@@ -222,7 +231,9 @@ def update_progress_bar(progress_bar_tag, downloaded, total_size, progress):
 
 def start_downloads(sender, app_data):
     global epub_links_list
+
     dpg.disable_item("download_buttons_group")
+    dpg.show_item("progress_bars_container")
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
     future = executor.submit(download_process, epub_links_list)
     future.add_done_callback(on_downloads_complete)
@@ -370,17 +381,10 @@ def setup_ui():
                             dpg.add_button(label="Download selected")
 
                         dpg.add_spacer(height=5)
-                        for index in range(1, 5):
-                            dpg.add_spacer(height=5)
-                            item_id = dpg.add_progress_bar(
-                                tag=f"progress_bar_{index}",
-                                default_value=0.0,
-                                width=-5,
-                                height=40,
-                                show=False,
-                                overlay="0.0 MB / 0.0 MB (0%)",
-                            )
-                            progress_bars.append(item_id)
+                        with dpg.child_window(
+                            tag="progress_bars_container", auto_resize_y=True, show=False
+                        ):
+                            pass
 
                         dpg.add_spacer(height=5)
                         with dpg.child_window(
@@ -394,6 +398,7 @@ def setup_ui():
         dpg.bind_item_theme("multiload_main_window_2", main_window_theme)
         dpg.bind_item_theme("get_links_log", main_window_theme)
         dpg.bind_item_theme("links_list", main_window_theme)
+        dpg.bind_item_theme("progress_bars_container", main_window_theme)
         dpg.set_primary_window("main_window", True)
 
     except Exception as e:
