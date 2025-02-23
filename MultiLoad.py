@@ -15,6 +15,7 @@ import logging
 import ctypes
 import pywinstyles
 from win32 import win32gui
+import queue
 
 
 logging.basicConfig(
@@ -87,7 +88,7 @@ def fetch_rendered_html(url):
         add_text_to_log(f"Found {len(epub_links)} EPUB links")
 
         return epub_links
-    
+
     except Exception as e:
         logging.info(f"Fetching HTML caused an exception: {e}")
     finally:
@@ -108,7 +109,7 @@ def extract_epub_links(html_page, base_url):
     return epub_links
 
 
-def download_epub(url, save_folder="downloads", max_retries=3):
+def download_epub(url, save_folder, progress_bar_tag, max_retries=3):
     global session, replacements
 
     os.makedirs(save_folder, exist_ok=True)
@@ -131,10 +132,19 @@ def download_epub(url, save_folder="downloads", max_retries=3):
                     continue
 
                 response.raise_for_status()
+                total_size = int(response.headers.get("content-length", 0))
+                downloaded = 0
+
+                update_progress_bar(progress_bar_tag, 0, total_size, 0.0)
 
                 with open(save_path, "wb") as file:
                     for chunk in response.iter_content(chunk_size=1024):
                         file.write(chunk)
+                        downloaded += len(chunk)
+                        progress = downloaded / total_size if total_size > 0 else 0
+                        update_progress_bar(
+                            progress_bar_tag, downloaded, total_size, progress
+                        )
 
                 print(f"Downloaded: {filename}")
                 break
@@ -146,12 +156,23 @@ def download_epub(url, save_folder="downloads", max_retries=3):
                     )
         else:
             print(f"File already exists: {filename}")
+            file_size = os.path.getsize(save_path)
+            update_progress_bar(progress_bar_tag, file_size, file_size, 1.0)
 
 
 def download_process(epub_urls):
-    if epub_urls != None and len(epub_urls) >= 1:
+    if epub_urls and len(epub_urls) >= 1:
+        pb_queue = queue.Queue()
+        for pb in progress_bars:
+            pb_queue.put(pb)
+
         with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-            executor.map(download_epub, epub_urls)
+            futures = [
+                executor.submit(download_wrapper, url, "downloads", pb_queue)
+                for url in epub_urls
+            ]
+            concurrent.futures.wait(futures)
+        print("\n\nComplete")
     else:
         print("No download links found")
 
@@ -161,22 +182,55 @@ def download_process(epub_urls):
     if msg.get() == "Yes":
         webbrowser.open("https://www.google.com/chrome/")"""
 
+
 def add_text_to_log(text: str):
     dpg.add_text(text, parent="get_links_log", wrap=0)
 
 
+def download_wrapper(url, save_folder, progress_bar_queue):
+    progress_bar_tag = progress_bar_queue.get()
+    try:
+        init_progress_bar(progress_bar_tag)
+        download_epub(url, save_folder, progress_bar_tag)
+    except Exception as e:
+        print(f"Download failed: {e}")
+    finally:
+        progress_bar_queue.put(progress_bar_tag)
+        reset_progress_bar(progress_bar_tag)
+
+
+def init_progress_bar(progress_bar_tag):
+    dpg.show_item(progress_bar_tag)
+    dpg.set_value(progress_bar_tag, 0.0)
+    dpg.configure_item(progress_bar_tag, overlay="0.0 MB / 0.0 MB (0.0%)")
+
+
+def reset_progress_bar(progress_bar_tag):
+    dpg.hide_item(progress_bar_tag)
+
+
+def update_progress_bar(progress_bar_tag, downloaded, total_size, progress):
+    downloaded_mb = downloaded / (1024 * 1024)
+    if total_size > 0:
+        total_mb = total_size / (1024 * 1024)
+        overlay = f"{downloaded_mb:.1f} MB / {total_mb:.1f} MB ({progress * 100:.1f}%)"
+    else:
+        overlay = f"{downloaded_mb:.1f} MB / ??? MB (Unknown)"
+    dpg.set_value(progress_bar_tag, progress)
+    dpg.configure_item(progress_bar_tag, overlay=overlay)
+
+
 def start_downloads(sender, app_data):
     global epub_links_list
-
+    dpg.disable_item("download_buttons_group")
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
     future = executor.submit(download_process, epub_links_list)
     future.add_done_callback(on_downloads_complete)
 
 
 def on_downloads_complete(future):
-    print("\n\nComplete")
-    for item in progress_bars():
-        dpg.hide_item(item)
+    dpg.enable_item("download_buttons_group")
+    print("\n\nDownloads complete!")
 
 
 def get_links_button_press(sender, app_data):
@@ -259,7 +313,7 @@ def setup_ui():
         with dpg.theme_component(dpg.mvAll):
             dpg.add_theme_style(dpg.mvStyleVar_FrameRounding, 4)
             dpg.add_theme_style(dpg.mvStyleVar_FrameBorderSize, 2, 2)
-    
+
     with dpg.theme() as main_window_theme:
         with dpg.theme_component(dpg.mvChildWindow):
             dpg.add_theme_color(dpg.mvThemeCol_Border, (21, 101, 192))
@@ -284,27 +338,37 @@ def setup_ui():
                             hint="Paste your url here",
                         )
                         dpg.add_spacer(height=10)
-                        dpg.add_button(label="Get links", callback=get_links_button_press, tag="get_links_button")
+                        dpg.add_button(
+                            label="Get links",
+                            callback=get_links_button_press,
+                            tag="get_links_button",
+                        )
                         dpg.add_spacer(height=10)
 
-                        with dpg.child_window(tag="get_links_log", auto_resize_y=True, show=False):
+                        with dpg.child_window(
+                            tag="get_links_log", auto_resize_y=True, show=False
+                        ):
                             pass
                         dpg.add_spacer(height=10)
-                
+
                 with dpg.tab(label="Download files"):
                     with dpg.child_window(
                         autosize_x=True,
                         auto_resize_y=True,
                         tag="multiload_main_window_2",
-                    ):  
+                    ):
                         dpg.add_text("Links found: 0", wrap=0, tag="links_found_label")
                         dpg.add_spacer(height=10)
 
-                        with dpg.group(horizontal=True, show=False, tag="download_buttons_group"):
-                            dpg.add_button(label="Download all", callback=start_downloads)
+                        with dpg.group(
+                            horizontal=True, show=False, tag="download_buttons_group"
+                        ):
+                            dpg.add_button(
+                                label="Download all", callback=start_downloads
+                            )
                             dpg.add_spacer(width=10)
                             dpg.add_button(label="Download selected")
-                        
+
                         dpg.add_spacer(height=5)
                         for index in range(1, 5):
                             dpg.add_spacer(height=5)
@@ -319,7 +383,9 @@ def setup_ui():
                             progress_bars.append(item_id)
 
                         dpg.add_spacer(height=5)
-                        with dpg.child_window(tag="links_list", auto_resize_y=True, show=False):
+                        with dpg.child_window(
+                            tag="links_list", auto_resize_y=True, show=False
+                        ):
                             pass
                         dpg.add_spacer(height=10)
 
@@ -333,13 +399,19 @@ def setup_ui():
     except Exception as e:
         logging.critical(f"Setting up primary window and/or themes failed: {e}")
 
+
 def main():
     dpg.create_context()
 
     user32 = ctypes.windll.user32
     screen_width, screen_height = user32.GetSystemMetrics(0), user32.GetSystemMetrics(1)
 
-    dpg.create_viewport(title="MultiLoad", width=int(screen_width / 1.5), height=int(screen_height / 1.5), vsync=True)
+    dpg.create_viewport(
+        title="MultiLoad",
+        width=int(screen_width / 1.5),
+        height=int(screen_height / 1.5),
+        vsync=True,
+    )
     dpg.set_viewport_small_icon(resource_path("docs/icon.ico"))
     dpg.set_viewport_pos(
         [
@@ -357,7 +429,7 @@ def main():
         logging.error("Window not found for pywinstyles")
     else:
         pywinstyles.apply_style(hwnd, "mica")
-    
+
     dpg.start_dearpygui()
     dpg.destroy_context()
 
